@@ -1,10 +1,11 @@
 services:
   # Main TPN Federated Application Container
   tpn-federated:
-    image: "taofuprotocol/tpn-federated:${TPN_IMAGE_TAG:-latest}"
+    image: "tpn-federated:${TPN_IMAGE_TAG:-latest}"
     build:
       context: .
       dockerfile: tpn_federated.Dockerfile
+    pull_policy: build
     container_name: tpn-federated
     restart: unless-stopped
     # .env note: environment variable interpolation is done with the .env in the folder where you run docker compose
@@ -180,10 +181,11 @@ services:
   # WireGuard VPN Container (Worker-specific)
   # This container is only needed for worker nodes
   wireguard:
-    image: "taofuprotocol/tpn-wireguard:${TPN_IMAGE_TAG:-latest}"
+    image: "tpn-wireguard:${TPN_IMAGE_TAG:-latest}"
     build:
       context: .
       dockerfile: tpn_wireguard.Dockerfile
+    pull_policy: build
     container_name: wireguard
     restart: unless-stopped
     cap_add:
@@ -219,6 +221,21 @@ services:
       retries: 3
       start_period: 60s
 
+  anyone-proxy:
+    image: anyone-proxy:latest
+    build:
+      context: .
+      dockerfile: tpn_anonproxy.Dockerfile
+    pull_policy: build
+    container_name: anyone-proxy
+    init: true
+    restart: unless-stopped
+    configs:
+      - source: anonrc
+        target: /etc/anon/anonrc
+    networks:
+      - anyone-proxy_network
+
 networks:
   # Internal network - has internal connectivity only, cannot reach internet or be reached from it
   tpn-internal:
@@ -239,9 +256,30 @@ networks:
         - subnet: ${TPN_EXTERNAL_SUBNET:-172.21.0.0/16}
           gateway: ${TPN_EXTERNAL_GATEWAY:-172.21.0.1}
 
+  anyone-proxy_network:
+    driver: bridge
+    internal: false
+
 volumes:
   postgres_data:
   maxmind_data:
   ip2location_data:
   container_cache:
   wireguard_config:
+
+configs:
+  anonrc:
+    content: |
+      ORPort 9001
+      ControlPort 9051
+      Log notice file /var/log/anon/notices.log
+      ExitRelay 0
+      SocksPort 0.0.0.0:9050
+      AvoidDiskWrites 1
+      CookieAuthentication 0
+      VirtualAddrNetwork 172.16.0.0/16
+      AutomapHostsOnResolve 1
+      TransPort 0.0.0.0:9055 IsolateClientAddr IsolateClientProtocol IsolateDestAddr IsolateDestPort
+      DNSPort 0.0.0.0:5353
+      SocksPolicy accept 0.0.0.0/0
+      AgreeToTerms 1
